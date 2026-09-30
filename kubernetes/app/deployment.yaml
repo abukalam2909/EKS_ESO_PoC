@@ -1,0 +1,75 @@
+# Tiny stand-in app. It reads the secret file every 30s and logs only the
+# first 12 chars of its sha256, so you can watch rotation land without the
+# value ever hitting the logs.
+#
+# Secret comes in as a volume, not env vars: env vars show up in
+# /proc/<pid>/environ, crash dumps and `kubectl describe`, get inherited by
+# child processes, and never change after the pod starts. The volume is
+# updated by the kubelet after rotation (usually within a minute or two of
+# the k8s Secret changing), and since the app re-reads the file each time it
+# picks that up without a restart. No subPath - subPath mounts never update.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app
+  namespace: demo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+    spec:
+      serviceAccountName: app
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: ACCOUNT_ID.dkr.ecr.ca-central-1.amazonaws.com/mirror/busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
+          command:
+            - /bin/sh
+            - -c
+            - |
+              while true; do
+                h=$(sha256sum /etc/app-secret/api-key | cut -c1-12)
+                echo "$(date -u +%FT%TZ) api-key sha256=${h}"
+                sleep 30
+              done
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+          readinessProbe:
+            exec:
+              command: ["test", "-r", "/etc/app-secret/api-key"]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["test", "-r", "/etc/app-secret/api-key"]
+            periodSeconds: 30
+          volumeMounts:
+            - name: api-key
+              mountPath: /etc/app-secret
+              readOnly: true
+      volumes:
+        - name: api-key
+          secret:
+            secretName: app-api-key
+            defaultMode: 0440 # root:65534 via fsGroup, readable only by the app's group

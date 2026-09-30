@@ -1,0 +1,10 @@
+# The app reads a file and writes to stdout. It needs no network at all, not
+# even DNS, so everything is denied both ways.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: demo-app
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]

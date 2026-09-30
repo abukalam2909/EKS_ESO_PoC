@@ -1,0 +1,15 @@
+# Created before the helm install (the chart's label job is turned off so I
+# don't have to mirror its extra image). The ignore label only takes effect
+# because gatekeeper-system is also in exemptNamespaces in values.yaml.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gatekeeper-system
+  labels:
+    admission.gatekeeper.sh/ignore: no-self-managing
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.36
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.36
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.36

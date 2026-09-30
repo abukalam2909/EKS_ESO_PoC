@@ -1,0 +1,57 @@
+# gatekeeper chart 3.23.1
+# helm install gatekeeper gatekeeper \
+#   --repo https://open-policy-agent.github.io/gatekeeper/charts --version 3.23.1 \
+#   -n gatekeeper-system -f values.yaml
+
+replicas: 1
+
+image:
+  repository: ACCOUNT_ID.dkr.ecr.ca-central-1.amazonaws.com/mirror/gatekeeper
+  release: "v3.23.1@sha256:dfc6fc78753f5564303429c1c1fdfe611df17be224ab22c09ce9d2a73c468a8d"
+
+# Default is Ignore, i.e. if gatekeeper is down or slow, everything gets
+# admitted. Fail closed instead. kube-system and gatekeeper-system are exempt
+# so a broken gatekeeper can't stop the cluster fixing itself.
+validatingWebhookFailurePolicy: Fail
+validatingWebhookTimeoutSeconds: 5
+
+# exemptNamespaces only allows the ignore label; the namespaces still need the
+# admission.gatekeeper.sh/ignore label for the webhook to skip them.
+# gatekeeper-system gets it in namespace.yaml, kube-system in DEPLOY.md.
+controllerManager:
+  exemptNamespaces:
+    - kube-system
+    - gatekeeper-system
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+audit:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+auditInterval: 60
+logDenies: true
+
+# not used here, so off
+disableMutation: true
+enableExternalData: false
+
+# these hooks each pull another image (gatekeeper-crds, curl). CRDs come from
+# the chart's crds/ dir instead and the namespace is labelled in namespace.yaml.
+upgradeCRDs:
+  enabled: false
+postInstall:
+  labelNamespace:
+    enabled: false
+  probeWebhook:
+    enabled: false

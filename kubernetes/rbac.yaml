@@ -1,0 +1,75 @@
+# Groups come from the EKS access entries (iam_humans.tf).
+# No wildcards anywhere. Nobody here can read secrets, exec/attach, or touch
+# RBAC. Creating pods is left out for developers because anyone who can
+# create a pod (or a deployment) can mount any secret in the namespace, and
+# exec gives you the mounted file directly - both are secret reads in practice.
+
+# --- developer: look, don't touch ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+  namespace: demo-app
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "events", "serviceaccounts"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets", "secretstores"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer
+  namespace: demo-app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: developer
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: developers
+---
+# --- platform operator: runs the app and its ESO resources ---
+# Can still deploy workloads, which means it can indirectly get at the secret
+# (see SECURITY.md). It just can't read Secret objects directly.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: platform-operator
+  namespace: demo-app
+rules:
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets", "secretstores"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "events", "serviceaccounts", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: platform-operator
+  namespace: demo-app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: platform-operator
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: platform-operators
