@@ -13,9 +13,9 @@ and NIST CSF 2.0. Mapped to, not compliant with. Threat IDs are from
 | All control plane logs on, KMS-encrypted | T-TAMP-2 | eks.tf | 2.1.1 | EKS.8 | DE.CM | V-10 | Implemented |
 | Access entries (API mode), 3 human roles, no auto cluster-admin | T-SPOOF-2 | iam_humans.tf | 4.1.7, 5.5.1 | - | PR.AA | V-10 | Implemented |
 | IMDSv2, hop limit 1; minimal node role; encrypted EBS | T-INFO-4 | nodes.tf | 5.1.3 | EC2.8, EC2.3 | PR.PS | V-02 | Implemented |
-| One CMK per purpose, rotation on, admins can't decrypt | T-INFO-9 | kms.tf | 5.3.1 | KMS.4, KMS.5 | PR.DS | Review | Implemented |
+| One CMK per purpose, rotation on, 7-day deletion window, admins can't decrypt | T-INFO-9, T-AVAIL-2 | kms.tf | 5.3.1 | KMS.4, KMS.5 | PR.DS | Review | Implemented |
 | Secret policy: known readers only, VPC endpoint only, admin-only policy changes | T-INFO-5, T-EXFIL-2 | secrets.tf | 4.4.2 | - | PR.AA | V-08 | Implemented |
-| 30-day rotation Lambda, creates first value | T-AVAIL-1 | rotation.tf | - | SecretsManager.1, .2, .4 | PR.DS | V-09 | Implemented |
+| 30-day rotation Lambda in the VPC, scoped to one secret, creates first value | T-AVAIL-1, T-SUP-2 | rotation.tf | - | SecretsManager.1, .2, .4 | PR.DS | V-09 | Implemented |
 | No secret value in Terraform state or outputs | T-INFO-8 | secrets.tf | - | - | PR.DS | V-10 | Implemented |
 | IRSA role trusts exact SA; reads one secret; KMS via Secrets Manager only | T-INFO-5 | iam_app.tf | 5.2.1 | KMS.1, KMS.2 | PR.AA | V-01 | Implemented |
 | App pod has no AWS role; `secret-reader` runs no pods | T-INFO-5 | app/serviceaccounts.yaml | 4.1.5, 4.1.6 | - | PR.AA | V-05 | Implemented |
@@ -23,6 +23,7 @@ and NIST CSF 2.0. Mapped to, not compliant with. Threat IDs are from
 | Cluster-wide and push CRDs not installed | T-TAMP-1, T-EXFIL-1 | eso/values.yaml | - | - | PR.PS | V-07 | Implemented |
 | ESO network policy: DNS, API, secrets endpoints only | T-INFO-6 | eso/networkpolicy.yaml | 4.3.2 | - | PR.IR | V-06 | Implemented |
 | App namespace denies all traffic | T-INFO-7 | app/networkpolicy.yaml | 4.3.2 | - | PR.IR | V-06 | Implemented |
+| ExternalSecret: 1h refresh, `creationPolicy: Owner`, `deletionPolicy: Retain` | T-TAMP-3, T-AVAIL-2 | app/externalsecret.yaml | - | - | PR.DS | Review | Implemented |
 | Secret mounted as read-only file, never env, no subPath | T-INFO-3 | app/deployment.yaml | 4.4.1 | - | PR.DS | V-05, V-09 | Implemented |
 | PSA restricted; non-root, read-only fs, limits | T-INFO-4 | namespaces.yaml | 4.2.1-4.2.5 | - | PR.PS | V-05 | Implemented |
 | RBAC: no wildcards; developer view only; operator no Secret reads | T-INFO-1, T-INFO-2 | rbac.yaml | 4.1.2-4.1.4, 4.1.8 | - | PR.AA | V-03, V-04 | Partial - operator can deploy a pod that mounts the secret |
