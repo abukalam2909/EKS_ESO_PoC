@@ -1,132 +1,39 @@
 # Controls
 
-Each control, the threat it's for (IDs from [THREAT_MODEL.md](THREAT_MODEL.md)),
-where it's implemented, what it's mapped to, and how to check it.
+Controls **mapped to** CIS Amazon EKS Benchmark v1.8.0, AWS FSBP (Security Hub)
+and NIST CSF 2.0. Mapped to, not compliant with. Threat IDs are from
+[THREAT_MODEL.md](THREAT_MODEL.md); V-xx checks are in [DEPLOY.md](DEPLOY.md).
 
-Controls are **mapped to** these frameworks to show where they line up. That
-is not a claim of compliance with any of them.
+| Control | Threat | Where | CIS EKS | FSBP | CSF | Check | Status |
+|---------|--------|-------|---------|------|-----|-------|--------|
+| Private subnets, no NAT/internet route, VPC endpoints with account-scoped policies | T-INFO-7 | network.tf, endpoints.tf | 5.4.3 | EC2.9, EC2.15 | PR.IR | V-10 | Implemented |
+| Default SG stripped, no 0.0.0.0/0 ingress, VPC flow logs | T-INFO-7 | network.tf | - | EC2.2, EC2.6 | PR.IR, DE.CM | V-10 | Implemented |
+| Private API endpoint, SSM tunnel host with no SSH/public IP | T-SPOOF-2 | eks.tf, admin_host.tf | 5.4.1, 5.4.2 | EKS.1 | PR.AA | V-10 | Implemented |
+| Secrets envelope-encrypted with a CMK | T-INFO-9 | eks.tf | 5.3.1 | EKS.3 | PR.DS | V-10 | Implemented |
+| All control plane logs on, KMS-encrypted | T-TAMP-2 | eks.tf | 2.1.1 | EKS.8 | DE.CM | V-10 | Implemented |
+| Access entries (API mode), 3 human roles, no auto cluster-admin | T-SPOOF-2 | iam_humans.tf | 4.1.7, 5.5.1 | - | PR.AA | V-10 | Implemented |
+| IMDSv2, hop limit 1; minimal node role; encrypted EBS | T-INFO-4 | nodes.tf | 5.1.3 | EC2.8, EC2.3 | PR.PS | V-02 | Implemented |
+| One CMK per purpose, rotation on, admins can't decrypt | T-INFO-9 | kms.tf | 5.3.1 | KMS.4, KMS.5 | PR.DS | Review | Implemented |
+| Secret policy: known readers only, VPC endpoint only, admin-only policy changes | T-INFO-5, T-EXFIL-2 | secrets.tf | 4.4.2 | - | PR.AA | V-08 | Implemented |
+| 30-day rotation Lambda, creates first value | T-AVAIL-1 | rotation.tf | - | SecretsManager.1, .2, .4 | PR.DS | V-09 | Implemented |
+| No secret value in Terraform state or outputs | T-INFO-8 | secrets.tf | - | - | PR.DS | V-10 | Implemented |
+| IRSA role trusts exact SA; reads one secret; KMS via Secrets Manager only | T-INFO-5 | iam_app.tf | 5.2.1 | KMS.1, KMS.2 | PR.AA | V-01 | Implemented |
+| App pod has no AWS role; `secret-reader` runs no pods | T-INFO-5 | app/serviceaccounts.yaml | 4.1.5, 4.1.6 | - | PR.AA | V-05 | Implemented |
+| ESO scoped to one namespace, no IAM role, token minting for one SA | T-INFO-6 | eso/values.yaml, eso/rbac.yaml | 4.1.2, 4.1.12 | - | PR.AA | V-07 | Implemented |
+| Cluster-wide and push CRDs not installed | T-TAMP-1, T-EXFIL-1 | eso/values.yaml | - | - | PR.PS | V-07 | Implemented |
+| ESO network policy: DNS, API, secrets endpoints only | T-INFO-6 | eso/networkpolicy.yaml | 4.3.2 | - | PR.IR | V-06 | Implemented |
+| App namespace denies all traffic | T-INFO-7 | app/networkpolicy.yaml | 4.3.2 | - | PR.IR | V-06 | Implemented |
+| Secret mounted as read-only file, never env, no subPath | T-INFO-3 | app/deployment.yaml | 4.4.1 | - | PR.DS | V-05, V-09 | Implemented |
+| PSA restricted; non-root, read-only fs, limits | T-INFO-4 | namespaces.yaml | 4.2.1-4.2.5 | - | PR.PS | V-05 | Implemented |
+| RBAC: no wildcards; developer view only; operator no Secret reads | T-INFO-1, T-INFO-2 | rbac.yaml | 4.1.2-4.1.4, 4.1.8 | - | PR.AA | V-03, V-04 | Partial - operator can deploy a pod that mounts the secret |
+| Gatekeeper, fails closed: pod security, ECR-only images by digest | T-SUP-1 | gatekeeper/ | 4.2.1, 5.1.4 | - | PR.PS | V-05 | Implemented |
+| Gatekeeper ESO rules: no cluster/push kinds or generators, no static keys, same-namespace SA, AWS only | T-SPOOF-1, T-EXFIL-1 | gatekeeper/constraints/eso.yaml | 4.5.1 | - | PR.PS | V-05 | Implemented |
+| Gatekeeper: only ESO writes Secrets in demo-app; no env secrets; no subPath | T-INFO-3, T-INFO-8 | gatekeeper/constraints/app-namespace.yaml | 4.4.1 | - | PR.DS | V-05 | Implemented |
+| ECR: immutable tags, scan on push, lifecycle | T-SUP-1 | ecr.tf | 5.1.1 | ECR.1, .2, .3 | GV.SC | Review | Implemented |
+| CloudTrail + alert on unexpected GetSecretValue to encrypted SNS | T-REP-1 | cloudtrail.tf, detection.tf | - | CloudTrail.1, .2, .4, SNS.1 | DE.AE | V-08 | Implemented |
+| gitleaks pre-commit | T-INFO-8 | .pre-commit-config.yaml | - | - | PR.DS | - | Implemented |
+| ESO still reads/writes Secrets and mints one token in its namespace | T-INFO-6 | - | - | - | - | - | Accepted risk |
+| Break-glass alarm, tamper alerts, audit queries, GuardDuty, Config, DNS Firewall, image signing, CI | various | - | - | - | DE.CM | - | Not implemented |
 
-- **CIS EKS** - CIS Amazon EKS Benchmark v1.8.0 (the latest version kube-bench
-  implements; CIS published v2.0.0 in June 2026 and this hasn't been remapped
-  yet)
-- **FSBP** - AWS Foundational Security Best Practices control IDs in Security Hub
-- **CSF** - NIST Cybersecurity Framework 2.0 function and category
-- **Verify** - V-xx are the manual checks in DEPLOY.md. "Scan" means the static
-  scanners (Checkov, tflint, Trivy, kube-linter, gitleaks). "Review" means read
-  the file.
-
-Status: **Implemented**, **Partial** (does part of the job, gap noted),
-**Accepted risk** (known gap, reason in SECURITY.md), **Not implemented**
-(out of scope for the POC).
-
-## Network
-
-| ID | Control | Threats | Implemented in | CIS EKS | FSBP | CSF | Verify | Status |
-|----|---------|---------|----------------|---------|------|-----|--------|--------|
-| C-NET-1 | Default-deny ingress and egress in `demo-app`; the app has no network access | T-INFO-4, T-INFO-7 | kubernetes/app/networkpolicy.yaml | 4.3.2 | - | PR.IR | V-06 | Implemented |
-| C-NET-2 | Private subnets, no public IPs, no NAT or internet route by default | T-INFO-7 | terraform/network.tf | 5.4.3 | EC2.9, EC2.15 | PR.IR | V-10 | Implemented |
-| C-NET-3 | Interface and S3 gateway endpoints; endpoint policies limited to this account (Secrets Manager endpoint limited to `demo/*`) | T-INFO-7, T-EXFIL-2 | terraform/endpoints.tf | - | - | PR.IR | Review | Implemented |
-| C-NET-4 | No 0.0.0.0/0 ingress anywhere; default SG stripped; separate subnets for control plane and secrets endpoints | T-INFO-7 | terraform/network.tf, endpoints.tf | - | EC2.2, EC2.18, EC2.19 | PR.IR | Scan | Implemented |
-| C-NET-5 | DNS Firewall to stop DNS tunnelling | T-INFO-7 | - | - | - | PR.IR | - | Not implemented |
-| C-DET-6 | VPC Flow Logs, all traffic, KMS encrypted | T-INFO-7 | terraform/network.tf | - | EC2.6 | DE.CM | Review | Implemented |
-
-## Cluster and nodes
-
-| ID | Control | Threats | Implemented in | CIS EKS | FSBP | CSF | Verify | Status |
-|----|---------|---------|----------------|---------|------|-----|--------|--------|
-| C-EKS-1 | Private API endpoint only; access through SSM port forward; tunnel host has no SSH, key pair, public IP or cluster access | T-SPOOF-2 | terraform/eks.tf, admin_host.tf | 5.4.1, 5.4.2 | EKS.1, EC2.9 | PR.AA, PR.IR | V-10 | Implemented |
-| C-EKS-2 | Envelope encryption of Kubernetes API data with a customer managed key | T-INFO-9 | terraform/eks.tf, kms.tf | 5.3.1 | EKS.3 (retired Aug 2026) | PR.DS | V-10 | Implemented |
-| C-EKS-3 | All five control plane log types to a KMS-encrypted log group | T-SPOOF-2, T-TAMP-2 | terraform/eks.tf | 2.1.1, 2.1.2 | EKS.8 | DE.CM | V-10 | Implemented |
-| C-EKS-4 | Access entries in API mode, no aws-auth, no automatic creator admin; break-glass, operator, developer roles with named usernames | T-SPOOF-2 | terraform/iam_humans.tf | 4.1.7, 5.5.1 | - | PR.AA | V-10 | Implemented |
-| C-EKS-5 | Kubernetes 1.36 in standard support, pinned add-on versions | T-SUP-1 | terraform/eks.tf, nodes.tf | - | EKS.2 | ID.IM | V-10 | Implemented |
-| C-NODE-1 | IMDSv2 required, hop limit 1 (nodes and tunnel host) | T-INFO-4 | terraform/nodes.tf, admin_host.tf | - | EC2.8 | PR.PS | V-02 | Implemented |
-| C-NODE-2 | Node role limited to the three managed policies EKS needs; EBS encrypted with a CMK | T-INFO-4, T-INFO-9 | terraform/nodes.tf | 5.1.3 | EC2.3 | PR.AA, PR.DS | Review | Implemented |
-
-## KMS and Secrets Manager
-
-| ID | Control | Threats | Implemented in | CIS EKS | FSBP | CSF | Verify | Status |
-|----|---------|---------|----------------|---------|------|-----|--------|--------|
-| C-KMS-1 | Four CMKs (logs, eks, ebs, secrets), rotation on, 7-day deletion window, no root `kms:*`, admins can't encrypt/decrypt | T-INFO-9, T-AVAIL-2 | terraform/kms.tf | 5.3.1 | KMS.4, KMS.5 | PR.DS | Review | Implemented |
-| C-SM-1 | Secret resource policy: only the app role, rotation Lambda and admin can call GetSecretValue; only admin can change the policy; public policies blocked | T-INFO-5 | terraform/secrets.tf | 4.4.2 | - | PR.AA | V-08 | Implemented |
-| C-SM-2 | Resource policy denies data-plane calls not through the VPC endpoint (admin and AWS services exempt) | T-EXFIL-2 | terraform/secrets.tf | - | - | PR.AA, PR.IR | V-08 | Implemented |
-| C-SM-3 | Rotation every 30 days; first value generated by rotation | T-AVAIL-1 | terraform/rotation.tf | - | SecretsManager.1, SecretsManager.2, SecretsManager.4 | PR.DS | V-09 | Implemented |
-| C-SM-4 | Rotation Lambda in the VPC, scoped to one secret, egress to the secrets endpoint only, encrypted logs | T-SUP-2 | terraform/rotation.tf | - | Lambda.2, Lambda.3 | PR.AA | Review | Implemented |
-| C-SM-5 | Secret encrypted with its own CMK | T-INFO-9 | terraform/secrets.tf | - | - | PR.DS | Review | Implemented |
-| C-TF-1 | Terraform never writes a secret value; no outputs carry secrets | T-INFO-8 | terraform/secrets.tf, outputs.tf | - | - | PR.DS | V-10 | Implemented |
-
-## Workload identity
-
-| ID | Control | Threats | Implemented in | CIS EKS | FSBP | CSF | Verify | Status |
-|----|---------|---------|----------------|---------|------|-----|--------|--------|
-| C-IAM-1 | IRSA trust on exact `sub` (`demo-app:secret-reader`) and `aud` | T-INFO-5 | terraform/iam_app.tf | 5.2.1 | - | PR.AA | V-01 | Implemented |
-| C-IAM-2 | Role can read one secret ARN; KMS decrypt only via Secrets Manager and only for that secret (IAM + key policy) | T-INFO-5 | terraform/iam_app.tf, kms.tf | 5.2.1 | KMS.1, KMS.2 | PR.AA | V-01 | Implemented |
-| C-IAM-3 | App pod runs as an SA with no role; `secret-reader` runs no pods; tokens not automounted | T-SPOOF-1, T-INFO-5 | kubernetes/app/serviceaccounts.yaml, deployment.yaml | 4.1.5, 4.1.6 | - | PR.AA | V-05 | Implemented |
-
-## External Secrets Operator
-
-| ID | Control | Threats | Implemented in | CIS EKS | FSBP | CSF | Verify | Status |
-|----|---------|---------|----------------|---------|------|-----|--------|--------|
-| C-ESO-1 | ClusterSecretStore, ClusterExternalSecret, PushSecret, ClusterPushSecret, ClusterGenerator CRDs not installed and not processed | T-TAMP-1, T-EXFIL-1 | kubernetes/eso/values.yaml | 4.4.2 | - | PR.PS | V-07 | Implemented |
-| C-ESO-2 | Controller scoped to `demo-app` (Role, not ClusterRole) | T-INFO-6 | kubernetes/eso/values.yaml | 4.1.2 | - | PR.AA | V-07 | Implemented |
-| C-ESO-3 | No IAM role on the controller SA | T-INFO-6 | kubernetes/eso/values.yaml | - | - | PR.AA | V-07 | Implemented |
-| C-ESO-4 | ESO NetworkPolicy: egress to DNS, API server, STS/Secrets Manager endpoints only; webhook ingress from control plane only | T-INFO-6, T-INFO-7 | kubernetes/eso/networkpolicy.yaml | 4.3.2 | - | PR.IR | V-06 | Implemented |
-| C-ESO-5 | Non-root, read-only root fs, no capabilities, seccomp, limits; PSA restricted; image pinned by digest | T-INFO-6, T-SUP-1 | kubernetes/eso/values.yaml, namespaces.yaml | 4.2.1-4.2.5 | - | PR.PS | V-05 | Implemented |
-| C-ESO-6 | Token minting limited to `secret-reader` via `resourceNames` | T-INFO-6 | kubernetes/eso/rbac.yaml | 4.1.12 | - | PR.AA | V-07 | Implemented |
-| C-ESO-7 | ExternalSecret: `refreshInterval` 1h, `creationPolicy: Owner`, `deletionPolicy: Retain` | T-AVAIL-1, T-TAMP-3 | kubernetes/app/externalsecret.yaml | - | - | PR.DS | Review | Implemented |
-| C-ESO-8 | Cert-controller has no cluster-wide secret access, only its own webhook secret by name | T-INFO-6 | kubernetes/eso/rbac.yaml | 4.1.2 | - | PR.AA | V-07 | Implemented |
-| C-ESO-9 | Namespaced generator CRDs removed | T-EXFIL-1 | - | - | - | PR.PS | - | Partial - chart can't skip them; Gatekeeper blocks creating them |
-| - | Controller still reads/writes Secrets and mints `secret-reader` tokens in `demo-app` | T-INFO-6 | - | - | - | - | - | Accepted risk |
-
-## Kubernetes workloads and RBAC
-
-| ID | Control | Threats | Implemented in | CIS EKS | FSBP | CSF | Verify | Status |
-|----|---------|---------|----------------|---------|------|-----|--------|--------|
-| C-WL-1 | Secret mounted as a read-only volume (mode 0440, fsGroup), never env, no subPath | T-INFO-3, T-AVAIL-1 | kubernetes/app/deployment.yaml | 4.4.1 | - | PR.DS | V-05, V-09 | Implemented |
-| C-WL-2 | App re-reads the file each time and logs only a hash prefix | T-INFO-3, T-INFO-8 | kubernetes/app/deployment.yaml | - | - | PR.DS | V-09 | Implemented |
-| C-WL-3 | Non-root, read-only root fs, capabilities dropped, seccomp, limits, image by digest | T-SUP-1 | kubernetes/app/deployment.yaml | 4.2.1-4.2.5 | - | PR.PS | V-05 | Implemented |
-| C-PSA-1 | PSA `restricted` enforced (version pinned) on `demo-app`, `external-secrets`, `gatekeeper-system` | T-INFO-4, T-TAMP-2 | kubernetes/namespaces.yaml, gatekeeper/namespace.yaml | 4.2.1-4.2.5 | - | PR.PS | V-05 | Implemented |
-| C-RBAC-1 | Developer: view only; no secrets, pod or workload creation, exec/attach, ephemeral containers, ESO or RBAC changes | T-INFO-1, T-INFO-2 | kubernetes/rbac.yaml | 4.1.2, 4.1.4 | - | PR.AA | V-03 | Implemented |
-| C-RBAC-2 | No wildcards in any Role or ClusterRole we ship | T-INFO-1 | kubernetes/rbac.yaml, eso/rbac.yaml | 4.1.3 | - | PR.AA | Scan | Implemented |
-| C-RBAC-3 | No impersonate, escalate or bind for non-admin roles | T-INFO-1 | kubernetes/rbac.yaml | 4.1.8 | - | PR.AA | V-03 | Implemented |
-| C-RBAC-4 | Operator: manages ESO resources and deployments, can't read Secrets directly | T-INFO-2 | kubernetes/rbac.yaml | 4.1.2 | - | PR.AA | V-04 | Partial - can still mount the secret in a pod it deploys (accepted) |
-| C-RBAC-5 | Only break-glass can change constraints, webhooks or namespace labels | T-TAMP-2 | kubernetes/rbac.yaml (by omission) | 4.1.11 | - | PR.AA | V-03 | Implemented |
-
-## Admission control (Gatekeeper)
-
-| ID | Control | Threats | Implemented in | CIS EKS | FSBP | CSF | Verify | Status |
-|----|---------|---------|----------------|---------|------|-----|--------|--------|
-| C-GK-1 | No privileged containers or privilege escalation; must run as non-root; requests and limits | T-SUP-1 | gatekeeper/constraints/pod-security.yaml | 4.2.1, 4.2.5 | - | PR.PS | V-05 | Implemented |
-| C-GK-2 | Images only from our ECR mirror, pinned by digest | T-SUP-1 | gatekeeper/constraints/images.yaml | 5.1.4 | - | PR.PS, GV.SC | V-05 | Implemented |
-| C-GK-3 | No pods as `secret-reader` | T-INFO-2, T-SPOOF-1 | gatekeeper/constraints/app-namespace.yaml | 4.1.5 | - | PR.AA | V-05 | Implemented |
-| C-GK-4 | Deny ClusterSecretStore, ClusterExternalSecret, PushSecret, ClusterPushSecret and all generator kinds | T-TAMP-1, T-EXFIL-1 | gatekeeper/constraints/eso.yaml | - | - | PR.PS | V-05 | Implemented |
-| C-GK-5 | Deny SecretStores with static credentials | T-SPOOF-1 | gatekeeper/constraints/eso.yaml | - | - | PR.AA | V-05 | Implemented |
-| C-GK-6 | Deny cross-namespace `serviceAccountRef` | T-INFO-5 | gatekeeper/constraints/eso.yaml | 4.5.1 | - | PR.AA | V-05 | Implemented |
-| C-GK-7 | Only the ESO SA may create/update Secrets in `demo-app` | T-SPOOF-1, T-INFO-8 | gatekeeper/constraints/app-namespace.yaml | - | - | PR.DS | V-05 | Implemented |
-| C-GK-8 | Deny secrets in env/envFrom in `demo-app` | T-INFO-3 | gatekeeper/constraints/app-namespace.yaml | 4.4.1 | - | PR.DS | V-05 | Implemented |
-| C-GK-9 | Webhook fails closed; constraints roll out dryrun then deny | T-TAMP-2 | gatekeeper/values.yaml | 4.1.11 | - | PR.PS | V-05 | Implemented |
-| C-GK-10 | SecretStore must be AWS Secrets Manager in `ca-central-1` with JWT auth; ExternalSecrets may only use namespaced stores, no generators | T-EXFIL-1 | gatekeeper/constraints/eso.yaml | - | - | PR.PS | V-05 | Implemented |
-| C-GK-11 | Deny subPath mounts of secret volumes | T-AVAIL-1 | gatekeeper/constraints/app-namespace.yaml | - | - | PR.DS | V-05 | Implemented |
-
-## Supply chain and repo hygiene
-
-| ID | Control | Threats | Implemented in | CIS EKS | FSBP | CSF | Verify | Status |
-|----|---------|---------|----------------|---------|------|-----|--------|--------|
-| C-SUP-1 | Images mirrored into private ECR by digest; immutable tags, scan on push, lifecycle policy | T-SUP-1 | terraform/ecr.tf | 5.1.1, 5.1.4 | ECR.1, ECR.2, ECR.3 | GV.SC, ID.RA | Review | Implemented |
-| C-SUP-2 | Exact provider pins and committed lock file; chart versions and gatekeeper-library commit pinned | T-SUP-1 | terraform/versions.tf, kubernetes/* | - | - | GV.SC | Review | Implemented |
-| C-SUP-3 | Signature verification of upstream images before mirroring | T-SUP-1 | - | - | - | GV.SC | - | Not implemented |
-| C-GIT-1 | gitleaks pre-commit hook | T-INFO-8 | .pre-commit-config.yaml | - | - | PR.DS | Scan | Implemented |
-| C-CI-1 | CI running the scanners on every PR | T-INFO-8, T-SUP-1 | - | - | - | GV.SC | - | Not implemented (later) |
-
-## Detection
-
-| ID | Control | Threats | Implemented in | CIS EKS | FSBP | CSF | Verify | Status |
-|----|---------|---------|----------------|---------|------|-----|--------|--------|
-| C-DET-0 | Multi-region trail, read and write management events, KMS encrypted, log file validation; bucket versioned, TLS only, public access blocked | T-REP-1 | terraform/cloudtrail.tf | - | CloudTrail.1, CloudTrail.2, CloudTrail.4, S3.1, S3.5, S3.8, S3.17 | DE.CM | Review | Implemented |
-| C-DET-1 | Alert on GetSecretValue for the demo secret by anyone but the app role or rotation Lambda (denied calls included), to a KMS-encrypted SNS topic | T-REP-1, T-EXFIL-2 | terraform/detection.tf | - | SNS.1 | DE.AE, DE.CM | V-08 | Implemented |
-| C-DET-2 | Alarm on break-glass use | T-SPOOF-2 | - | 4.1.1 | - | DE.CM | - | Not implemented |
-| C-DET-3 | Saved queries on the EKS audit log (secret reads, exec, token requests, RBAC changes) | T-INFO-1, T-INFO-2 | - | 2.1.2 | - | DE.AE | - | Not implemented |
-| C-DET-4 | Alert on controls being disabled (key deletion, trail stopped, flow logs deleted, ...) | T-TAMP-2 | - | - | - | DE.CM | - | Not implemented |
-| C-DET-5 | GuardDuty EKS protection | T-INFO-6 | - | - | - | DE.CM | - | Not implemented |
-| C-CFG-1 | AWS Config rules and a Guard rule for continuous compliance | T-TAMP-2 | - | - | - | ID.IM | - | Not implemented |
-
-Not implemented items were cut to keep the POC on secrets delivery (THREAT_MODEL.md, decision D10) and are listed under "In production I would add" in SECURITY.md.
+Terraform files are under `terraform/`, manifests under `kubernetes/`.
+EKS.3 was retired by AWS in August 2026 (EKS encrypts by default since 1.28).
