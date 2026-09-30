@@ -1,0 +1,13 @@
+expected_account_id = "111111111111"
+region              = "ca-central-1"
+
+# the IAM role behind your terraform session (full ARN incl. path for SSO roles)
+admin_principal_arn = "arn:aws:iam::111111111111:role/example-admin"
+
+human_principal_arns = []
+alert_email          = "alerts@example.com"
+
+enable_nat                          = false
+enable_guardduty                    = false
+enable_guardduty_runtime_monitoring = false
+enable_config                       = false
