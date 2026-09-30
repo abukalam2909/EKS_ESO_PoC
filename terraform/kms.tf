@@ -89,3 +89,63 @@ resource "aws_kms_alias" "logs" {
   name          = "alias/${local.name}-logs"
   target_key_id = aws_kms_key.logs.key_id
 }
+
+data "aws_iam_policy_document" "kms_eks" {
+  # checkov:skip=CKV_AWS_111: key policy, "*" is this key
+  # checkov:skip=CKV_AWS_356: key policy, "*" is this key
+  statement {
+    sid       = "KeyAdmins"
+    actions   = local.kms_admin_actions
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = [var.admin_principal_arn]
+    }
+  }
+
+  # CreateCluster needs the caller to create a grant for EKS.
+  # GrantIsForAWSResource stops the admin granting it to anyone else.
+  statement {
+    sid       = "AdminGrantToEksOnly"
+    actions   = ["kms:CreateGrant"]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = [var.admin_principal_arn]
+    }
+    condition {
+      test     = "Bool"
+      variable = "kms:GrantIsForAWSResource"
+      values   = ["true"]
+    }
+  }
+
+  statement {
+    sid       = "ClusterRole"
+    actions   = ["kms:Encrypt", "kms:Decrypt", "kms:DescribeKey", "kms:ListGrants"]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = [aws_iam_role.cluster.arn]
+    }
+  }
+}
+
+resource "aws_kms_key" "eks" {
+  description             = "${local.name} eks secrets encryption"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+  policy                  = data.aws_iam_policy_document.kms_eks.json
+
+  lifecycle {
+    precondition {
+      condition     = local.running_as_admin
+      error_message = "Run terraform as admin_principal_arn or you can lock yourself out of the key."
+    }
+  }
+}
+
+resource "aws_kms_alias" "eks" {
+  name          = "alias/${local.name}-eks"
+  target_key_id = aws_kms_key.eks.key_id
+}
