@@ -1,0 +1,79 @@
+# external-secrets namespace: deny everything, then open only what ESO needs.
+# CIDRs match network.tf defaults:
+#   10.20.8.0/27   control plane ENIs (both /28s)
+#   10.20.9.32/28  sts + secretsmanager endpoints
+#   172.20.0.1     kubernetes service IP, 172.20.0.10 kube-dns service IP
+# kubelet probes from the node are allowed by the VPC CNI automatically.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: external-secrets
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-and-apiserver
+  namespace: external-secrets
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        - ipBlock:
+            cidr: 172.20.0.10/32
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - ipBlock:
+            cidr: 10.20.8.0/27
+        - ipBlock:
+            cidr: 172.20.0.1/32
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+# only the controller talks to AWS, and only to the two endpoints it needs
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: controller-to-aws-endpoints
+  namespace: external-secrets
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: external-secrets
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.20.9.32/28
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+# API server calls the validating webhook
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: webhook-from-apiserver
+  namespace: external-secrets
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: external-secrets-webhook
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.20.8.0/27
+      ports:
+        - { protocol: TCP, port: 10250 }

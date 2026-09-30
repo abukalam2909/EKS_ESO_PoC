@@ -1,0 +1,99 @@
+# external-secrets chart 2.11.0
+# helm install external-secrets external-secrets \
+#   --repo https://charts.external-secrets.io --version 2.11.0 \
+#   -n external-secrets -f values.yaml
+#
+# ACCOUNT_ID is replaced at install time (DEPLOY.md). Image is the upstream
+# v2.11.0 index, mirrored to ECR with its digest unchanged.
+
+installCRDs: true
+
+# don't even install the cluster-scoped / push CRDs - those kinds simply
+# don't exist in the API. Gatekeeper also denies them in case they come back.
+crds:
+  createClusterSecretStore: false
+  createClusterExternalSecret: false
+  createClusterGenerator: false
+  createPushSecret: false
+  createClusterPushSecret: false
+
+processClusterStore: false
+processClusterExternalSecret: false
+processClusterGenerator: false
+processPushSecret: false
+processClusterPushSecret: false
+
+# controller only watches demo-app and gets a Role there instead of a
+# ClusterRole over every namespace (kube-system included)
+scopedNamespace: demo-app
+scopedRBAC: true
+
+rbac:
+  create: true
+  # no blanket serviceaccounts/token create; token-role.yaml grants it for
+  # the secret-reader SA only
+  serviceAccountTokenCreate: false
+  aggregateToView: false
+  aggregateToEdit: false
+  aggregateToAdmin: false
+  servicebindings:
+    create: false
+
+# no IRSA annotation - the controller has no AWS access of its own. Each
+# SecretStore brings its own identity via serviceAccountRef.
+serviceAccount:
+  create: true
+  name: external-secrets
+  annotations: {}
+
+image:
+  repository: ACCOUNT_ID.dkr.ecr.ca-central-1.amazonaws.com/mirror/external-secrets
+  tag: "v2.11.0@sha256:66fb710878cbf3eba4a927e35c5d75e29a202c9bab238aad64bfb23b786b962b"
+
+replicaCount: 1
+leaderElect: false
+concurrent: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+serviceMonitor:
+  enabled: false
+
+webhook:
+  create: true
+  replicaCount: 1
+  image:
+    repository: ACCOUNT_ID.dkr.ecr.ca-central-1.amazonaws.com/mirror/external-secrets
+    tag: "v2.11.0@sha256:66fb710878cbf3eba4a927e35c5d75e29a202c9bab238aad64bfb23b786b962b"
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+certController:
+  create: true
+  replicaCount: 1
+  # the chart's ClusterRole lets it read every secret in the cluster. It only
+  # ever reads its own webhook cert secret (secret caching is disabled in the
+  # binary), so rbac.yaml gives it that one secret instead.
+  rbac:
+    create: false
+  image:
+    repository: ACCOUNT_ID.dkr.ecr.ca-central-1.amazonaws.com/mirror/external-secrets
+    tag: "v2.11.0@sha256:66fb710878cbf3eba4a927e35c5d75e29a202c9bab238aad64bfb23b786b962b"
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
