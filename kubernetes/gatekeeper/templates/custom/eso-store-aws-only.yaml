@@ -1,0 +1,48 @@
+# Only AWS Secrets Manager in our region, via JWT auth. Other providers
+# (webhook, vault, ...) can point anywhere and some can send in-cluster
+# secrets out, so they're not allowed.
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: esostoreawssecretsmanageronly
+spec:
+  crd:
+    spec:
+      names:
+        kind: EsoStoreAwsSecretsManagerOnly
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            region:
+              type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package esostoreawssecretsmanageronly
+
+        name := input.review.object.metadata.name
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.provider[p]
+          p != "aws"
+          msg := sprintf("SecretStore <%v> uses provider <%v>, only aws is allowed", [name, p])
+        }
+
+        violation[{"msg": msg}] {
+          aws := input.review.object.spec.provider.aws
+          object.get(aws, "service", "") != "SecretsManager"
+          msg := sprintf("SecretStore <%v> must use service SecretsManager", [name])
+        }
+
+        violation[{"msg": msg}] {
+          aws := input.review.object.spec.provider.aws
+          object.get(aws, "region", "") != input.parameters.region
+          msg := sprintf("SecretStore <%v> must use region <%v>", [name, input.parameters.region])
+        }
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.provider.aws
+          not input.review.object.spec.provider.aws.auth.jwt.serviceAccountRef.name
+          msg := sprintf("SecretStore <%v> must authenticate with auth.jwt.serviceAccountRef", [name])
+        }

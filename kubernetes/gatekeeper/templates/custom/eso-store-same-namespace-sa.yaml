@@ -1,0 +1,23 @@
+# A store may only authenticate as a service account in its own namespace,
+# otherwise one namespace could borrow another's AWS role.
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: esostoresamenamespacesa
+spec:
+  crd:
+    spec:
+      names:
+        kind: EsoStoreSameNamespaceSA
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package esostoresamenamespacesa
+
+        violation[{"msg": msg}] {
+          ref := input.review.object.spec.provider[_].auth.jwt.serviceAccountRef
+          own := object.get(input.review.object.metadata, "namespace", input.review.namespace)
+          target := object.get(ref, "namespace", own)
+          target != own
+          msg := sprintf("SecretStore <%v> references service account %v/%v outside its namespace <%v>", [input.review.object.metadata.name, target, ref.name, own])
+        }

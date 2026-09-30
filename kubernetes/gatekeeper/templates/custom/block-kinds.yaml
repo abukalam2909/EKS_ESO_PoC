@@ -1,0 +1,20 @@
+# Denies every object the constraint matches. Used for the ESO kinds I don't
+# want in the cluster at all (cluster-wide stores, push secrets, generators).
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sblockkinds
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sBlockKinds
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sblockkinds
+
+        violation[{"msg": msg}] {
+          k := input.review.kind
+          msg := sprintf("%v/%v <%v> is not allowed in this cluster", [k.group, k.kind, input.review.object.metadata.name])
+        }
