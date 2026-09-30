@@ -1,0 +1,26 @@
+# all constraints start as dryrun; switched to deny once the audit is clean (DEPLOY.md)
+# only images mirrored into our own ECR, and only by digest
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sAllowedRepos
+metadata:
+  name: images-from-private-ecr
+spec:
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+  parameters:
+    repos:
+      - "ACCOUNT_ID.dkr.ecr.ca-central-1.amazonaws.com/mirror/"
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sImageDigests
+metadata:
+  name: images-pinned-by-digest
+spec:
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]

@@ -1,0 +1,80 @@
+# all constraints start as dryrun; switched to deny once the audit is clean (DEPLOY.md)
+# ESO kinds that aren't allowed at all. Most of their CRDs aren't even
+# installed; this catches them if a chart upgrade brings them back.
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sBlockKinds
+metadata:
+  name: block-eso-cluster-push-and-generator-kinds
+spec:
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: ["external-secrets.io"]
+        kinds: ["ClusterSecretStore", "ClusterExternalSecret", "PushSecret", "ClusterPushSecret"]
+      - apiGroups: ["generators.external-secrets.io"]
+        kinds:
+          - ACRAccessToken
+          - BeyondtrustWorkloadCredentialsDynamicSecret
+          - CloudsmithAccessToken
+          - ClusterGenerator
+          - ECRAuthorizationToken
+          - Fake
+          - GCRAccessToken
+          - GeneratorState
+          - GithubAccessToken
+          - GitlabDeployToken
+          - Grafana
+          - MFA
+          - Password
+          - QuayAccessToken
+          - SSHKey
+          - STSSessionToken
+          - UUID
+          - VaultDynamicSecret
+          - Webhook
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EsoStoreNoStaticCredentials
+metadata:
+  name: secretstore-no-static-credentials
+spec:
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: ["external-secrets.io"]
+        kinds: ["SecretStore"]
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EsoStoreSameNamespaceSA
+metadata:
+  name: secretstore-same-namespace-sa
+spec:
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: ["external-secrets.io"]
+        kinds: ["SecretStore"]
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EsoStoreAwsSecretsManagerOnly
+metadata:
+  name: secretstore-aws-secretsmanager-only
+spec:
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: ["external-secrets.io"]
+        kinds: ["SecretStore"]
+  parameters:
+    region: ca-central-1
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EsoExternalSecretRefs
+metadata:
+  name: externalsecret-namespaced-store-only
+spec:
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: ["external-secrets.io"]
+        kinds: ["ExternalSecret"]

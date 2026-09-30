@@ -1,0 +1,54 @@
+# all constraints start as dryrun; switched to deny once the audit is clean (DEPLOY.md)
+# rules specific to the app namespace
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sSecretsFromAllowedUsers
+metadata:
+  name: secrets-only-from-eso
+spec:
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Secret"]
+    namespaces: ["demo-app"]
+  parameters:
+    allowedUsers:
+      - system:serviceaccount:external-secrets:external-secrets
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sNoSecretEnv
+metadata:
+  name: no-secrets-in-env
+spec:
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["demo-app"]
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sNoSecretSubPath
+metadata:
+  name: no-secret-subpath-mounts
+spec:
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["demo-app"]
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDisallowedServiceAccounts
+metadata:
+  name: no-pods-as-secret-reader
+spec:
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["demo-app"]
+  parameters:
+    names: ["secret-reader"]
