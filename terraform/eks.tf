@@ -39,14 +39,15 @@ resource "aws_security_group" "cluster" {
   vpc_id      = aws_vpc.main.id
 }
 
-# API reachable only from inside the VPC workload subnet (tunnel host, nodes)
+# nodes already get in through the EKS-managed cluster SG, so this only
+# needs the tunnel host
 resource "aws_vpc_security_group_ingress_rule" "cluster_api" {
-  security_group_id = aws_security_group.cluster.id
-  description       = "kube-apiserver from workload subnet"
-  cidr_ipv4         = local.subnet_cidrs.workload
-  from_port         = 443
-  to_port           = 443
-  ip_protocol       = "tcp"
+  security_group_id            = aws_security_group.cluster.id
+  description                  = "kube-apiserver from the tunnel host"
+  referenced_security_group_id = aws_security_group.admin_host.id
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
 }
 
 resource "aws_eks_cluster" "main" {
