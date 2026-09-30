@@ -114,6 +114,22 @@ data "aws_iam_policy_document" "kms_logs_trail" {
     }
   }
 
+  # eventbridge rules and cloudwatch alarms publish to the encrypted SNS topic
+  statement {
+    sid       = "AlertPublishers"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
+    resources = ["*"]
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com", "cloudwatch.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+
   # so I can read trail files in S3 during an investigation, nothing else
   statement {
     sid       = "AdminReadTrailViaS3"
