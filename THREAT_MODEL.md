@@ -21,8 +21,7 @@ In scope:
   - one IAM role
   - one rotation Lambda
 - External Secrets Operator (ESO) and OPA Gatekeeper in the cluster.
-- Detection: CloudTrail, EventBridge and CloudWatch, plus GuardDuty as an option.
-- Continuous compliance: AWS Config, as an option.
+- Detection: CloudTrail, and an EventBridge alert on unexpected `GetSecretValue` calls.
 
 Out of scope, and stated in SECURITY.md:
 
@@ -42,7 +41,7 @@ Out of scope, and stated in SECURITY.md:
 | A5 | The ESO controller | It can read and write Secrets and mint service account tokens in `demo-app`. |
 | A6 | KMS keys (EKS secrets, Secrets Manager, logs) | Deleting or disabling a key breaks every consumer. Changing a key policy can widen access. |
 | A7 | Audit and detection data (EKS audit log, CloudTrail, Flow Logs) | Without it, misuse cannot be detected or investigated. |
-| A8 | Security configuration (Gatekeeper constraints, NetworkPolicies, PSA labels, RBAC, resource policy, Config rules) | If this drifts or is disabled, every other control weakens. |
+| A8 | Security configuration (Gatekeeper constraints, NetworkPolicies, PSA labels, RBAC, resource policy) | If this drifts or is disabled, every other control weakens. |
 | A9 | Terraform state, the Git repository and CI logs | Common places where secrets leak by accident. |
 
 ## 3. Actors
@@ -108,7 +107,7 @@ Ratings are inherent, meaning they assume the planned controls are absent, in a 
   - C-RBAC-1: the developer has no get, list or watch on Secrets.
   - C-RBAC-2: no wildcards in any Role or ClusterRole.
   - C-RBAC-3: no impersonate, escalate or bind for non-admin roles.
-  - C-DET-3: an audit log query finds Secret reads by anyone other than ESO.
+  - C-DET-3 (not implemented, D10): an audit log query for Secret reads by anyone other than ESO.
 - **Verified by:** V-03, S-01.
 - **Residual:** Break-glass, the ESO controller and the kubelet on the pod's node can still read the Secret. This is inherent to Kubernetes Secrets.
 
@@ -119,7 +118,7 @@ Ratings are inherent, meaning they assume the planned controls are absent, in a 
   - C-RBAC-1: the developer cannot create pods or workload controllers, and has no `pods/exec`, `pods/attach`, `pods/ephemeralcontainers` or `pods/portforward`.
   - C-RBAC-4: the operator's ability to deploy workloads is documented as equivalent to reading the secret.
   - C-GK-3: no pod may run as `secret-reader`.
-  - C-DET-3: an audit log query finds exec and attach.
+  - C-DET-3 (not implemented, D10): an audit log query for exec and attach.
 - **Verified by:** V-03, V-04.
 - **Residual:** The operator, and any CI/CD in production, can always obtain the value. SECURITY.md states this.
 
@@ -169,7 +168,7 @@ Ratings are inherent, meaning they assume the planned controls are absent, in a 
   - C-ESO-5: non-root, read-only root filesystem, all capabilities dropped, seccomp, resource limits, and PSA restricted.
   - C-SUP-1: the image is pinned by digest and scanned.
   - C-ESO-6: `serviceaccounts/token` is restricted by `resourceNames` to `secret-reader`. The chart setting `rbac.serviceAccountTokenCreate: false` drops the broad grant, and the repository adds a narrow Role instead.
-  - C-DET-3: an audit log query finds token requests.
+  - C-DET-3 (not implemented, D10): an audit log query for token requests.
 - **Verified by:** V-06, V-07.
 - **Residual:** Inside `demo-app`, the controller can read and write every Secret and mint a `secret-reader` token, so it can read the AWS secret. This is ESO's function and cannot be removed. SECURITY.md documents it.
 
@@ -199,9 +198,8 @@ Ratings are inherent, meaning they assume the planned controls are absent, in a 
 - **STRIDE:** I. **Likelihood:** Low. **Impact:** High.
 - **Controls:**
   - C-EKS-2: envelope encryption with a customer-managed key.
-  - C-CFG-1: a Config rule checks it.
   - No cluster backup tool is installed.
-- **Verified by:** V-10, V-11.
+- **Verified by:** V-10.
 - **Residual:** None for the API path; encryption at rest does not protect against anyone authorized to read Secrets through the API.
 
 ### Spoofing and repudiation
@@ -219,17 +217,16 @@ Ratings are inherent, meaning they assume the planned controls are absent, in a 
 - **STRIDE:** S, R. **Likelihood:** Medium. **Impact:** Medium.
 - **Controls:**
   - C-EKS-4: access entries give each of the three roles its own identity.
-  - C-DET-2: a metric filter and alarm fire on break-glass use.
+  - C-DET-2 (not implemented, D10): a metric filter and alarm on break-glass use.
   - C-EKS-3: the authenticator log records the IAM ARN.
-- **Verified by:** V-11 (`aws logs test-metric-filter` against a sample event).
-- **Residual:** Use is detected, not prevented. This is deliberate.
+- **Verified by:** Not verified automatically in the POC. The `break-glass:` username prefix makes use easy to find in the audit log.
+- **Residual:** Use is recorded in the audit log but is neither alerted on nor prevented.
 
 #### T-REP-1: Misuse of GetSecretValue goes undetected
 - **STRIDE:** R, I. **Likelihood:** Medium. **Impact:** High.
 - **Controls:**
   - C-DET-0: a CloudTrail trail.
   - C-DET-1: an EventBridge rule matches GetSecretValue on the demo secret from any principal outside the allowlist (the app role and the rotation Lambda), including denied calls, and sends it to an encrypted SNS topic.
-  - C-DET-5: GuardDuty, as an option.
 - **Verified by:** V-08. A denied call from the laptop must increase the rule's `MatchedEvents` metric.
 - **Residual:** Alert delivery takes minutes. Reads by allowlisted roles are not alerted, by design.
 
@@ -240,7 +237,7 @@ Ratings are inherent, meaning they assume the planned controls are absent, in a 
 - **Controls:**
   - C-ESO-1: these CRDs are not installed, and the `process*` flags are off.
   - C-GK-4: a Gatekeeper deny, as a second layer.
-  - C-DET-3: an audit log query finds these kinds.
+  - C-DET-3 (not implemented, D10): an audit log query for these kinds.
 - **Verified by:** V-05 and V-07. A "no matches for kind" error counts as a pass.
 - **Residual:** Break-glass could reinstall the CRDs, and that would be visible in the audit log.
 
@@ -274,13 +271,12 @@ Ratings are inherent, meaning they assume the planned controls are absent, in a 
   - PSA labels are removed.
 - **STRIDE:** T, R. **Likelihood:** Medium. **Impact:** High.
 - **Controls:**
-  - C-CFG-1: AWS Config rules, as an option.
-  - C-DET-4: an EventBridge rule sends high-risk API calls to SNS: `ScheduleKeyDeletion`, `DisableKey`, `DisableKeyRotation`, `PutKeyPolicy`, `DeleteResourcePolicy`, `PutResourcePolicy`, `UpdateClusterConfig`, `DeleteFlowLogs`, `StopLogging`, `DeleteTrail`, `DeleteLogGroup` and `CancelRotateSecret`.
-  - C-DET-3: audit log queries for RBAC, constraint and webhook changes.
+  - C-DET-4 (not implemented, D10): an EventBridge alert on high-risk API calls: `ScheduleKeyDeletion`, `DisableKey`, `DisableKeyRotation`, `PutKeyPolicy`, `DeleteResourcePolicy`, `PutResourcePolicy`, `UpdateClusterConfig`, `DeleteFlowLogs`, `StopLogging`, `DeleteTrail`, `DeleteLogGroup` and `CancelRotateSecret`.
+  - C-DET-3 (not implemented, D10): audit log queries for RBAC, constraint and webhook changes.
   - C-GK-9: Gatekeeper uses `failurePolicy: Fail`.
   - C-PSA-1: PSA works independently of Gatekeeper.
   - C-RBAC-5: only break-glass can change constraints, webhooks or namespace labels.
-- **Verified by:** V-09 (`aws events test-event-pattern` against sample events; nothing is disabled), V-11, V-05 (checks the webhook failurePolicy).
+- **Verified by:** V-05 (checks the webhook failurePolicy). The detection side is not implemented (D10).
 - **Residual:** In a single account, an account admin can also disable the detection. SCPs and a separate security account are the production answer.
 
 #### T-TAMP-3: An ExternalSecret is pointed at an existing Secret
@@ -298,7 +294,6 @@ Ratings are inherent, meaning they assume the planned controls are absent, in a 
   - C-ESO-7: `refreshInterval` is 1h.
   - C-WL-1: the secret is a volume, with no subPath.
   - C-WL-2: the app re-reads the file on each use.
-  - C-CFG-1: rotation Config rules.
 - **Verified by:** V-09. The check forces rotation and a sync, then compares hash prefixes of the Kubernetes Secret and of the pod file.
 - **Residual:**
   - Worst-case propagation is the refresh interval plus the kubelet sync period and cache TTL, about 1h plus 1 to 2 minutes.
@@ -309,7 +304,7 @@ Ratings are inherent, meaning they assume the planned controls are absent, in a 
 - **Controls:**
   - The Kubernetes Secret persists, so running and new pods keep the last value.
   - `deletionPolicy: Retain` (D8).
-  - KMS keys have a 7-day deletion window, and C-DET-4 alerts on `ScheduleKeyDeletion`.
+  - KMS keys have a 7-day deletion window.
 - **Verified by:** Failure modes are documented in the README and are not tested destructively.
 - **Residual:** Losing the EKS secrets key makes the cluster's Secrets unreadable.
 
@@ -350,7 +345,8 @@ Ratings are inherent, meaning they assume the planned controls are absent, in a 
 | D6 | DNS Firewall | Not implemented. Documented as residual risk and as a production addition. |
 | D7 | Node isolation | A shared node group is used. It is not a concern with one team, but it would matter with several. |
 | D8 | ExternalSecret `deletionPolicy` | `Retain`. A provider-side deletion or outage does not remove the in-cluster Secret and take the app down. Revocation is done by rotating. |
-| D9 | Verification | A single `tests/verify.sh` with checks V-01 to V-11 prints PASS or FAIL and a summary. Static checks S-01 to S-03 run in pre-commit and CI. There is no `scripts/` folder; deploy commands are written inline in DEPLOY.md. |
+| D9 | Verification | A single `tests/verify.sh` with checks V-01 to V-10 prints PASS or FAIL and a summary. Static checks S-01 to S-03 run in pre-commit and CI. There is no `scripts/` folder; deploy commands are written inline in DEPLOY.md. |
+| D10 | Detection scope | The POC keeps one alert, on unexpected `GetSecretValue`. The break-glass alarm, audit log queries, tamper alerts, GuardDuty and AWS Config were dropped to keep the focus on secrets delivery. They are listed under "In production I would add". |
 
 ## 9. Control catalogue (planned)
 
@@ -403,12 +399,10 @@ Ratings are inherent, meaning they assume the planned controls are absent, in a 
 | C-GK-11 | Deny subPath mounts of Secret volumes |
 | C-DET-0 | CloudTrail trail (management events, KMS encryption, log file validation) |
 | C-DET-1 | GetSecretValue alert for principals outside the allowlist, sent to encrypted SNS |
-| C-DET-2 | Break-glass metric filter and alarm |
-| C-DET-3 | Saved Logs Insights queries on the EKS audit log |
-| C-DET-4 | Alert on API calls that disable controls |
-| C-DET-5 | GuardDuty EKS protection and optional Runtime Monitoring (flag) |
+| C-DET-2 | Break-glass metric filter and alarm (not implemented, D10) |
+| C-DET-3 | Saved Logs Insights queries on the EKS audit log (not implemented, D10) |
+| C-DET-4 | Alert on API calls that disable controls (not implemented, D10) |
 | C-DET-6 | VPC Flow Logs, KMS-encrypted, short retention |
-| C-CFG-1 | AWS Config recorder, managed rules and a custom Guard rule (flag) |
 | C-TF-1 | No secret values in Terraform |
 | C-TF-2 | No outputs that carry secrets |
 | C-GIT-1 | gitleaks in pre-commit and CI |
@@ -425,20 +419,19 @@ Runtime checks are functions in `tests/verify.sh`. Each prints PASS or FAIL, and
 
 | ID | Check | Where it runs |
 |----|-------|---------------|
-| V-01 | A token for `demo-app:app` cannot assume the app role; the app role is denied any ARN outside `demo/app/*` | Admin host |
-| V-02 | A pod cannot get node credentials from IMDS | Admin host |
-| V-03 | The developer is denied: Secret get, list and watch; creating pods or workloads; exec, attach and ephemeral containers; creating SecretStore or ExternalSecret; RBAC changes | Admin host |
-| V-04 | The operator can manage ExternalSecret but cannot get Secrets | Admin host |
-| V-05 | Gatekeeper rejects each object in `tests/fixtures/` (server-side dry run, so nothing is created), and the webhook failurePolicy is Fail | Admin host |
-| V-06 | NetworkPolicy blocks cross-namespace traffic, egress from `demo-app`, and ESO egress to destinations that are not allowed | Admin host |
-| V-07 | The ESO service account has no role annotation and the controller pod has no AWS credentials; the cluster and push CRDs are absent; the ESO service account is denied outside `demo-app` | Admin host |
+| V-01 | A token for `demo-app:app` cannot assume the app role; the app role is denied any ARN outside `demo/app/*` | Laptop, through the tunnel |
+| V-02 | A pod cannot get node credentials from IMDS | Laptop, through the tunnel |
+| V-03 | The developer is denied: Secret get, list and watch; creating pods or workloads; exec, attach and ephemeral containers; creating SecretStore or ExternalSecret; RBAC changes | Laptop, through the tunnel |
+| V-04 | The operator can manage ExternalSecret but cannot get Secrets | Laptop, through the tunnel |
+| V-05 | Gatekeeper rejects each object in `tests/fixtures/` (server-side dry run, so nothing is created), and the webhook failurePolicy is Fail | Laptop, through the tunnel |
+| V-06 | NetworkPolicy blocks cross-namespace traffic, egress from `demo-app`, and ESO egress to destinations that are not allowed | Laptop, through the tunnel |
+| V-07 | The ESO service account has no role annotation and the controller pod has no AWS credentials; the cluster and push CRDs are absent; the ESO service account is denied outside `demo-app` | Laptop, through the tunnel |
 | V-08 | GetSecretValue from outside the VPC endpoint is denied, and the alert's `MatchedEvents` metric increases | Laptop |
-| V-09 | Forced rotation reaches the Kubernetes Secret and the pod file within the bound (hash prefixes only); tamper-event patterns match sample events | Admin host |
+| V-09 | Forced rotation reaches the Kubernetes Secret and the pod file within the bound (hash prefixes only) | Laptop |
 | V-10 | Cluster and network posture: private endpoint, encryption key, log types, access entry mode, no route to 0.0.0.0/0; Terraform state holds no secret version | Laptop |
-| V-11 | AWS Config rules report COMPLIANT (if enabled); the break-glass metric filter matches a sample event | Laptop |
 | S-01 | Checkov, Trivy config, tflint, kubeconform, kube-linter, and a check that RBAC has no wildcards | Pre-commit and CI |
 | S-02 | gitleaks | Pre-commit and CI |
-| S-03 | Trivy image scan; kube-bench (EKS profile) and kubescape (CIS, NSA) run from the admin host, with results in `evidence/` | CI and admin host |
+| S-03 | Trivy image scan; kube-bench (EKS profile) and kubescape (CIS, NSA) run through the tunnel, with results in `evidence/` | CI and laptop |
 
 ## 11. Residual risk summary
 
@@ -452,4 +445,5 @@ These carry over into SECURITY.md.
 6. DNS exfiltration is possible, because DNS Firewall is not implemented.
 7. The admin ARN exception in the resource policy works from outside the VPC endpoint.
 8. Rotation is demonstrated on a synthetic value. Real credential rotation needs a `setSecret` step against the downstream system.
-9. Cost-driven compromises: a single AZ, optional Config and GuardDuty, no DNS Firewall.
+9. Cost-driven compromises: a single AZ and no DNS Firewall.
+10. Detection is limited to the `GetSecretValue` alert. There is no alerting on break-glass use or on controls being disabled, no saved audit log queries, and no GuardDuty or AWS Config (D10). The logs needed to investigate are still collected.

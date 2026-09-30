@@ -30,10 +30,8 @@ locals {
   az_primary   = var.availability_zones[0]
   az_secondary = var.availability_zones[1]
 
-  app_namespace       = "demo-app"
-  secret_reader_sa    = "secret-reader"
-  eso_namespace       = "external-secrets"
-  eso_service_account = "external-secrets"
+  app_namespace    = "demo-app"
+  secret_reader_sa = "secret-reader"
 
   secret_name = "demo/app/api-key"
 }

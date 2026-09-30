@@ -106,7 +106,7 @@ variable "public_endpoint_cidrs" {
   }
 }
 
-# optional paid stuff, all off by default (cost in README)
+# optional, off by default (cost in README)
 
 variable "enable_nat" {
   description = "NAT gateway, ~35 USD/month. Off = no internet egress at all."
@@ -114,17 +114,3 @@ variable "enable_nat" {
   default     = false
 }
 
-variable "enable_guardduty" {
-  type    = bool
-  default = false
-}
-
-variable "enable_guardduty_runtime_monitoring" {
-  type    = bool
-  default = false
-}
-
-variable "enable_config" {
-  type    = bool
-  default = false
-}

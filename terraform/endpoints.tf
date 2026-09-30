@@ -4,10 +4,10 @@
 
 locals {
   general_endpoints = ["ec2", "ecr.api", "ecr.dkr", "logs", "kms", "eks", "ssm", "ssmmessages", "ec2messages"]
-
-  # ESO only talks to these two, so they get their own subnet
-  secrets_endpoints = ["sts", "secretsmanager"]
 }
+
+# sts and secretsmanager are further down, in their own subnet, because
+# they're the only two ESO talks to
 
 resource "aws_security_group" "endpoints" {
   name        = "${local.name}-vpc-endpoints"
