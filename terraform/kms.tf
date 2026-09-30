@@ -73,11 +73,69 @@ data "aws_iam_policy_document" "kms_logs" {
   }
 }
 
+
+data "aws_iam_policy_document" "kms_logs_trail" {
+  # checkov:skip=CKV_AWS_111: key policy, "*" is this key
+  # checkov:skip=CKV_AWS_356: key policy, "*" is this key
+  source_policy_documents = [data.aws_iam_policy_document.kms_logs.json]
+
+  statement {
+    sid       = "CloudTrailEncrypt"
+    actions   = ["kms:GenerateDataKey"]
+    resources = ["*"]
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+    condition {
+      test     = "StringLike"
+      variable = "kms:EncryptionContext:aws:cloudtrail:arn"
+      values   = ["arn:${local.partition}:cloudtrail:*:${local.account_id}:trail/*"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values   = [local.trail_arn]
+    }
+  }
+
+  statement {
+    sid       = "CloudTrailDescribe"
+    actions   = ["kms:DescribeKey"]
+    resources = ["*"]
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values   = [local.trail_arn]
+    }
+  }
+
+  # so I can read trail files in S3 during an investigation, nothing else
+  statement {
+    sid       = "AdminReadTrailViaS3"
+    actions   = ["kms:Decrypt"]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = [var.admin_principal_arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["s3.${local.region}.amazonaws.com"]
+    }
+  }
+}
+
 resource "aws_kms_key" "logs" {
   description             = "${local.name} logs"
   enable_key_rotation     = true
   deletion_window_in_days = 7
-  policy                  = data.aws_iam_policy_document.kms_logs.json
+  policy                  = data.aws_iam_policy_document.kms_logs_trail.json
 
   lifecycle {
     precondition {
