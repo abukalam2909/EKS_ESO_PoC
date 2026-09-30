@@ -252,6 +252,26 @@ data "aws_iam_policy_document" "kms_secrets" {
     }
   }
 
+  statement {
+    sid       = "RotationLambda"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = [aws_iam_role.rotation.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["secretsmanager.${local.region}.amazonaws.com"]
+    }
+    condition {
+      test     = "StringLike"
+      variable = "kms:EncryptionContext:SecretARN"
+      values   = [local.secret_arn_pattern]
+    }
+  }
+
   # admin is intentionally not a key user: can manage the secret, can't read it
 }
 
