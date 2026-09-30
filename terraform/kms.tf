@@ -32,6 +32,8 @@ locals {
   ]
 
   running_as_admin = data.aws_iam_session_context.current.issuer_arn == var.admin_principal_arn
+
+  secret_arn_pattern = "arn:${local.partition}:secretsmanager:${local.region}:${local.account_id}:secret:${local.secret_name}-??????"
 }
 
 data "aws_iam_policy_document" "kms_logs" {
@@ -212,4 +214,62 @@ resource "aws_kms_key" "ebs" {
 resource "aws_kms_alias" "ebs" {
   name          = "alias/${local.name}-ebs"
   target_key_id = aws_kms_key.ebs.key_id
+}
+
+data "aws_iam_policy_document" "kms_secrets" {
+  # checkov:skip=CKV_AWS_111: key policy, "*" is this key
+  # checkov:skip=CKV_AWS_356: key policy, "*" is this key
+  statement {
+    sid       = "KeyAdmins"
+    actions   = local.kms_admin_actions
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = [var.admin_principal_arn]
+    }
+  }
+
+  # app role can decrypt only through secrets manager and only for this
+  # secret. StringLike because the ARN has a random suffix and pointing at the
+  # real ARN here would be a dependency cycle. The IAM policy uses the exact ARN.
+  statement {
+    sid       = "AppRoleDecrypt"
+    actions   = ["kms:Decrypt"]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = [aws_iam_role.app_secret_reader.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["secretsmanager.${local.region}.amazonaws.com"]
+    }
+    condition {
+      test     = "StringLike"
+      variable = "kms:EncryptionContext:SecretARN"
+      values   = [local.secret_arn_pattern]
+    }
+  }
+
+  # admin is intentionally not a key user: can manage the secret, can't read it
+}
+
+resource "aws_kms_key" "secrets" {
+  description             = "${local.name} secrets manager"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+  policy                  = data.aws_iam_policy_document.kms_secrets.json
+
+  lifecycle {
+    precondition {
+      condition     = local.running_as_admin
+      error_message = "Run terraform as admin_principal_arn or you can lock yourself out of the key."
+    }
+  }
+}
+
+resource "aws_kms_alias" "secrets" {
+  name          = "alias/${local.name}-secrets"
+  target_key_id = aws_kms_key.secrets.key_id
 }
