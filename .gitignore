@@ -1,0 +1,20 @@
+# terraform
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+.terraform/
+crash*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+terraform/build/
+
+kubeconfig
+*.kubeconfig
+.env
+.DS_Store
