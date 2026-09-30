@@ -149,3 +149,67 @@ resource "aws_kms_alias" "eks" {
   name          = "alias/${local.name}-eks"
   target_key_id = aws_kms_key.eks.key_id
 }
+
+data "aws_iam_policy_document" "kms_ebs" {
+  # checkov:skip=CKV_AWS_111: key policy, "*" is this key
+  # checkov:skip=CKV_AWS_356: key policy, "*" is this key
+  statement {
+    sid       = "KeyAdmins"
+    actions   = local.kms_admin_actions
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = [var.admin_principal_arn]
+    }
+  }
+
+  # same idea as the aws/ebs managed key: usable by the account but only via
+  # EC2 in this region. covers the autoscaling service-linked role that
+  # launches the node group instances.
+  statement {
+    sid = "ViaEc2InThisAccount"
+    actions = [
+      "kms:CreateGrant",
+      "kms:Decrypt",
+      "kms:DescribeKey",
+      "kms:Encrypt",
+      "kms:GenerateDataKeyWithoutPlaintext",
+      "kms:ReEncryptFrom",
+      "kms:ReEncryptTo",
+    ]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["ec2.${local.region}.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "kms:CallerAccount"
+      values   = [local.account_id]
+    }
+  }
+}
+
+resource "aws_kms_key" "ebs" {
+  description             = "${local.name} ebs volumes"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+  policy                  = data.aws_iam_policy_document.kms_ebs.json
+
+  lifecycle {
+    precondition {
+      condition     = local.running_as_admin
+      error_message = "Run terraform as admin_principal_arn or you can lock yourself out of the key."
+    }
+  }
+}
+
+resource "aws_kms_alias" "ebs" {
+  name          = "alias/${local.name}-ebs"
+  target_key_id = aws_kms_key.ebs.key_id
+}
